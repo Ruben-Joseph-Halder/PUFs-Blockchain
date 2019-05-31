@@ -43,7 +43,7 @@ type shard struct {
 	Receiver	string    `json:"Receiver"`	// peer11.Org1, peer02.Org2, peer12.Org2
 
 	Threshold	int 	  `json:"Threshold"`	// τ
-	PUFNum		int 	  `json:"PUFNum"`		// 6PUF
+	PUFNum		int 	  `json:"PUFNum"`	// 6 PUFs
 	SuccessNum	int 	  `json:"SuccessNum"`
 }
 
