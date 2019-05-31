@@ -1,9 +1,3 @@
-/**
-  author: ruben
-  data: 2019.1.8
- */
-
-
 /*
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -22,61 +16,6 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
 */
-
-// ====CHAINCODE EXECUTION SAMPLES (CLI) ==================
-
-// ==== Invoke shards ====
-// peer chaincode invoke -C myc1 -n shards -c '{"Args":["addShard","shard1","blue","35","tom"]}'
-// peer chaincode invoke -C myc1 -n shards -c '{"Args":["addShard","shard2","red","50","tom"]}'
-// peer chaincode invoke -C myc1 -n shards -c '{"Args":["addShard","shard3","blue","70","tom"]}'
-// peer chaincode invoke -C myc1 -n shards -c '{"Args":["transferShard","shard2","jerry"]}'
-// peer chaincode invoke -C myc1 -n shards -c '{"Args":["transferShardsBasedOnSender","blue","jerry"]}'
-// peer chaincode invoke -C myc1 -n shards -c '{"Args":["delete","shard1"]}'
-
-// ==== Query shards ====
-// peer chaincode query -C myc1 -n shards -c '{"Args":["readShard","shard1"]}'
-// peer chaincode query -C myc1 -n shards -c '{"Args":["getShardsByRange","shard1","shard3"]}'
-// peer chaincode query -C myc1 -n shards -c '{"Args":["getHistoryForShard","shard1"]}'
-
-// Rich Query (Only supported if CouchDB is used as state database):
-//   peer chaincode query -C myc1 -n shards -c '{"Args":["queryShardsBySender","tom"]}'
-//   peer chaincode query -C myc1 -n shards -c '{"Args":["queryShards","{\"selector\":{\"Receiver\":\"tom\"}}"]}'
-
-//The following examples demonstrate creating indexes on CouchDB
-//Example hostname:port configurations
-//
-//Docker or vagrant environments:
-// http://couchdb:5984/
-//
-//Inside couchdb docker container
-// http://127.0.0.1:5984/
-
-// Index for chaincodeid, docType, Receiver.
-// Note that docType and Receiver fields must be prefixed with the "data" wrapper
-// chaincodeid must be added for all queries
-//
-// Definition for use with Fauxton interface
-// {"index":{"fields":["chaincodeid","data.docType","data.Receiver"]},"ddoc":"indexReceiverDoc", "name":"indexReceiver","type":"json"}
-//
-// example curl definition for use with command line
-// curl -i -X POST -H "Content-Type: application/json" -d "{\"index\":{\"fields\":[\"chaincodeid\",\"data.docType\",\"data.Receiver\"]},\"name\":\"indexReceiver\",\"ddoc\":\"indexReceiverDoc\",\"type\":\"json\"}" http://hostname:port/myc1/_index
-//
-
-// Index for chaincodeid, docType, Receiver, size (descending order).
-// Note that docType, Receiver and size fields must be prefixed with the "data" wrapper
-// chaincodeid must be added for all queries
-//
-// Definition for use with Fauxton interface
-// {"index":{"fields":[{"data.size":"desc"},{"chaincodeid":"desc"},{"data.docType":"desc"},{"data.Receiver":"desc"}]},"ddoc":"indexSizeSortDoc", "name":"indexSizeSortDesc","type":"json"}
-//
-// example curl definition for use with command line
-// curl -i -X POST -H "Content-Type: application/json" -d "{\"index\":{\"fields\":[{\"data.size\":\"desc\"},{\"chaincodeid\":\"desc\"},{\"data.docType\":\"desc\"},{\"data.Receiver\":\"desc\"}]},\"ddoc\":\"indexSizeSortDoc\", \"name\":\"indexSizeSortDesc\",\"type\":\"json\"}" http://hostname:port/myc1/_index
-
-// Rich Query with index design doc and index name specified (Only supported if CouchDB is used as state database):
-//   peer chaincode query -C myc1 -n shards -c '{"Args":["queryShards","{\"selector\":{\"docType\":\"shard\",\"Receiver\":\"tom\"}, \"use_index\":[\"_design/indexReceiverDoc\", \"indexReceiver\"]}"]}'
-
-// Rich Query with index design doc specified only (Only supported if CouchDB is used as state database):
-//   peer chaincode query -C myc1 -n shards -c '{"Args":["queryShards","{\"selector\":{\"docType\":{\"$eq\":\"shard\"},\"Receiver\":{\"$eq\":\"tom\"},\"size\":{\"$gt\":0}},\"fields\":[\"docType\",\"Receiver\",\"size\"],\"sort\":[{\"size\":\"desc\"}],\"use_index\":\"_design/indexSizeSortDoc\"}"]}'
 
 package main
 
@@ -97,14 +36,6 @@ type SimpleChaincode struct {
 }
 
 type shard struct {
-/*
-	ObjectType string `json:"docType"` //docType is used to distinguish the various types of objects in state database
-	Name       string `json:"name"`    //the fieldtags are needed to keep case from bouncing around
-	Color      string `json:"color"`
-	Size       int    `json:"size"`
-	Owner      string `json:"owner"`
-*/
-
 	ObjectType	string    `json:"docType"`	// docType is used to distinguish the various types of objects in state database
 	Sender		string    `json:"Sender"`	// peer01.Org1
 	ShardId		string    `json:"ShardId"`	// ShardId: Hash256{ IP, x, shard }
@@ -112,9 +43,8 @@ type shard struct {
 	Receiver	string    `json:"Receiver"`	// peer11.Org1, peer02.Org2, peer12.Org2
 
 	Threshold	int 	  `json:"Threshold"`	// τ
-	PUFNum		int 	  `json:"PUFNum"`		// 6个PUF
-	SuccessNum	int 	  `json:"SuccessNum"`	// 4个认证成功即可
-
+	PUFNum		int 	  `json:"PUFNum"`		// 6PUF
+	SuccessNum	int 	  `json:"SuccessNum"`
 }
 
 
@@ -142,28 +72,23 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 	function, args := stub.GetFunctionAndParameters()
 	fmt.Println("invoke is running " + function)
 
-	// Handle different GetFunctionAndParameters 						  Sender     ShardId   Receiver
-	if function == "addShard" {					 //create a new shard: "peer01.Org1,   111,   peer02.Org2"
+	if function == "addShard" {
 		return t.addShard(stub, args)
-	} else if function == "transferShard" { 		//change Receiver of a specific shard: "peer01.Org1, 111, peer12.Org2"
-		return t.transferShard(stub, args)
-		/* else if function == "delete" { 				//delete a shard
-		return t.delete(stub, args)
-		}*/
-	} else if function == "readShard" { 			//read a shard : ShardId--111
+	} else if function == "transferShard" {
+	} else if function == "readShard" {
 		return t.readShard(stub, args)
-	} else if function == "queryShardsBySender" { 	//find shards for Sender X using rich query: Sender--peer01.Org1 !!!
+	} else if function == "queryShardsBySender" {
 		return t.queryShardsBySender(stub, args)
-	} else if function == "queryShards" { 			//find shards based on an ad hoc rich query: Sender !!!
+	} else if function == "queryShards" {
 		return t.queryShards(stub, args)
-	} else if function == "getHistoryForShard" {	//get history of values for a shard: !!!
+	} else if function == "getHistoryForShard" {
 		return t.getHistoryForShard(stub, args)
-	} else if function == "getShardsByRange" { 		//get shards based on range query： Sender(ShardId--111,222,333)
+	} else if function == "getShardsByRange" {
 		return t.getShardsByRange(stub, args)
 	}
 
-	fmt.Println("invoke did not find func: " + function) //error
-	return shim.Error("Received unknown function invocation(接收未知函数调用)")
+	fmt.Println("invoke did not find func: " + function)
+	return shim.Error("Received unknown function invocation(Receive unknown function calls)")
 }
 
 // 1
@@ -173,13 +98,8 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 func (t *SimpleChaincode) addShard(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	var err error
 
-	//   0       1       2     3
-	// "asdf", "blue", "35", "bob"
-
-	//     0         1           2
-	// "ShardId", "Sender", "Receiver"
 	if len(args) != 7 {
-		return shim.Error("Incorrect number of arguments. Expecting 7(需要7个参数：Sender, ShardId, DataId, Receiver, Threshold, PUFNum, SuccessNum)")
+		return shim.Error("Incorrect number of arguments. Expecting 7(7parameters：Sender, ShardId, DataId, Receiver, Threshold, PUFNum, SuccessNum)")
 	}
 
 	// ==== Input sanitation ====
@@ -241,9 +161,6 @@ func (t *SimpleChaincode) addShard(stub shim.ChaincodeStubInterface, args []stri
 	if err != nil {
 		return shim.Error(err.Error())
 	}
-	//Alternatively, build the shard json string manually if you don't want to use struct marshalling
-	//shardJSONasString := `{"docType":"shard",  "name": "` + ShardId + `", "Sender": "` + Sender + `", "size": ` + strconv.Itoa(size) + `, "Receiver": "` + Receiver + `"}`
-	//shardJSONasBytes := []byte(str)
 
 	// === Save shard to state ===
 	err = stub.PutState(ShardId, shardJSONasBytes)
@@ -279,11 +196,6 @@ func (t *SimpleChaincode) addShard(stub shim.ChaincodeStubInterface, args []stri
 // ===========================================================
 func (t *SimpleChaincode) transferShard(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 
-	//   0       1
-	// "name", "bob"
-
-	//     0      		 1
-	// "ShardId", "peer02.Org2"
 	if len(args) < 2 {
 		return shim.Error("Incorrect number of arguments. Expecting 2")
 	}
@@ -478,7 +390,7 @@ func getQueryResultForQueryString(stub shim.ChaincodeStubInterface, queryString 
 
 	// buffer is a JSON array containing QueryRecords
 	var buffer bytes.Buffer
-	buffer.WriteString("[") //######################################  \n  #######################################
+	buffer.WriteString("[")
 
 	bArrayMemberAlreadyWritten := false
 	for resultsIterator.HasNext() {
@@ -488,20 +400,20 @@ func getQueryResultForQueryString(stub shim.ChaincodeStubInterface, queryString 
 		}
 		// Add a comma before array members, suppress it for the first array member
 		if bArrayMemberAlreadyWritten == true {
-			buffer.WriteString(",\n") //######################################  \n  ###############################
+			buffer.WriteString(",\n")
 		}
 		buffer.WriteString("\n{\"Key\":")
 		buffer.WriteString("\"")
 		buffer.WriteString(queryResponse.Key)
 		buffer.WriteString("\"")
 
-		buffer.WriteString(",\n \"Record\":") //######################################  \n  #######################
+		buffer.WriteString(",\n \"Record\":")
 		// Record is a JSON object, so we write as-is
 		buffer.WriteString(string(queryResponse.Value))
-		buffer.WriteString("\n}") //######################################  \n  ###################################
+		buffer.WriteString("\n}")
 		bArrayMemberAlreadyWritten = true
 	}
-	buffer.WriteString("]\n") //######################################  \n  #######################################
+	buffer.WriteString("]\n")
 	fmt.Printf("- getQueryResultForQueryString queryResult:\n%s\n", buffer.String())
 
 	return buffer.Bytes(), nil
@@ -538,14 +450,14 @@ func (t *SimpleChaincode) getHistoryForShard(stub shim.ChaincodeStubInterface, a
 		}
 		// Add a comma before array members, suppress it for the first array member
 		if bArrayMemberAlreadyWritten == true {
-			buffer.WriteString(",\n") //######################################  \n  ################################
+			buffer.WriteString(",\n")
 		}
-		buffer.WriteString("\n{\"TxId\":") //######################################  \n  ###########################
+		buffer.WriteString("\n{\"TxId\":")
 		buffer.WriteString("\"")
-		buffer.WriteString(response.TxId)  // !!!!!!!!
+		buffer.WriteString(response.TxId)
 		buffer.WriteString("\"")
 
-		buffer.WriteString(",\n \"Value\":") //#####################################################################
+		buffer.WriteString(",\n \"Value\":")
 		// if it was a delete operation on given key, then we need to set the
 		//corresponding value null. Else, we will write the response.Value
 		//as-is (as the Value itself a JSON shard)
@@ -555,19 +467,13 @@ func (t *SimpleChaincode) getHistoryForShard(stub shim.ChaincodeStubInterface, a
 			buffer.WriteString(string(response.Value))
 		}
 
-		buffer.WriteString(",\n \"Timestamp\":") //#################################################################
-		buffer.WriteString(time.Unix(response.Timestamp.Seconds, int64(response.Timestamp.Nanos)).String())  // !!!
+		buffer.WriteString(",\n \"Timestamp\":")
+		buffer.WriteString(time.Unix(response.Timestamp.Seconds, int64(response.Timestamp.Nanos)).String())
 		buffer.WriteString("\"")
-
-//buffer.WriteString(",\n \"IsDelete\":")
-//buffer.WriteString("\"")
-//buffer.WriteString(strconv.FormatBool(response.IsDelete))
-//buffer.WriteString("\"")
-
-		buffer.WriteString("\n}") //######################################  \n  #####################################
+		buffer.WriteString("\n}")
 		bArrayMemberAlreadyWritten = true
 	}
-	buffer.WriteString("]\n") //#####################################################################################
+	buffer.WriteString("]\n")
 	fmt.Printf("- getHistoryForShard returning:\n%s\n", buffer.String())
 
 	return shim.Success(buffer.Bytes())
@@ -614,20 +520,20 @@ func (t *SimpleChaincode) getShardsByRange(stub shim.ChaincodeStubInterface, arg
 		}
 		// Add a comma before array members, suppress it for the first array member
 		if bArrayMemberAlreadyWritten == true {
-			buffer.WriteString(",\n") //#############################################################################
+			buffer.WriteString(",\n")
 		}
-		buffer.WriteString("\n{\"Key\":") //#########################################################################
+		buffer.WriteString("\n{\"Key\":")
 		buffer.WriteString("\"")
 		buffer.WriteString(queryResponse.Key)
 		buffer.WriteString("\"")
 
-		buffer.WriteString(",\n \"Record\":") //#####################################################################
+		buffer.WriteString(",\n \"Record\":")
 		// Record is a JSON object, so we write as-is
 		buffer.WriteString(string(queryResponse.Value))
-		buffer.WriteString("\n}") //######################################  \n  #####################################
+		buffer.WriteString("\n}")
 		bArrayMemberAlreadyWritten = true
 	}
-	buffer.WriteString("]\n") //######################################  \n  #########################################
+	buffer.WriteString("]\n")
 
 	fmt.Printf("- getShardsByRange queryResult:\n%s\n", buffer.String())
 
