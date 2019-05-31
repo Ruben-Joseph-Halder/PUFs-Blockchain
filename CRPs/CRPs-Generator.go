@@ -16,13 +16,6 @@ eg:
                 -file response_128_819200_0_220370.bin \
                 -size 128
 
-
-        get responses...
-        shard's number: 800 819200
-        create shards: Response/response_128_819200_0_220370-0.bin
-        create shards: Response/response_128_819200_0_220370-1.bin
-        create shards: Response/response_128_819200_0_220370-2.bin
-
  */
 
 
@@ -35,7 +28,7 @@ func main() {
 
     n,error := strconv.Atoi(*PUFNum)
     if error != nil{
-        fmt.Println("字符串转换成整数失败")
+        fmt.Println("Failed to convert string to integer")
     }
 
     if *infile == "Null" {
@@ -43,7 +36,6 @@ func main() {
         fmt.Print("Eg: go run CRPs-Generator.go -file response.bin -size 128  (bit) \n")
         return
     }else{
-        //得到键入路径中的文件名
         _, _, filenameOnly, fileSuffix := Ruben.DirFileNameSuffix(*infile)
 
         file, err := os.Open(*infile)
