@@ -9,7 +9,7 @@ import (
 
 /**
 eg:
-    go run 1-1File2Cipher-AES.go \
+    go run 1-1File2Cipher.go \
                 -file File/8.txt \
                 -key File/8-cipherKey.txt
 
