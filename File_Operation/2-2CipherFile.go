@@ -15,7 +15,7 @@ import (
 
 /*
 eg:
-    go run 2-2CipherFile-AES.go \
+    go run 2-2CipherFile.go \
                     -ciph 2-2MergeCipher/merge-8.txt \
                     -key File/8-cipherKey.txt
 
